@@ -1,0 +1,154 @@
+---
+title: "Practical Machine Learning - Class Project"
+author: "Mark Friedman"
+date: "Thursday, August 06, 2015"
+
+output:
+  html_document:
+    highlight: tango
+    keep_md: yes
+    number_sections: no
+    theme: united
+    toc: No
+  pdf_document:
+    toc: no
+mode: selfcontained
+---
+## Summary
+
+Create a prediction model using personal activity data from Groupware@LES (http://groupware.les.inf.puc-rio.br/har).  The goal is to predict which exercise method was used by the respondent.  The details of the dataset are provided on the website, but in brief are as follows:  six test subjects were asked to perform ten repetitions of a physical activity in five different ways.  The goal of this paper is to use the machine learning course material to test how well a model can be built that predicts which way the exercise was performed, based on the collected data. 
+
+## Requirements
+1. Describe how the model was built  
+2. Describe how cross validation was used  
+3. Identify the expected out of sample error rate  
+4. Explain the choices made
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE, warning=FALSE)
+```
+
+```{r libraries}
+library(lattice)
+library(ggplot2)
+library(caret)
+#library(MASS)
+library(randomForest)
+#library(rpart)
+set.seed(123456)
+```
+
+### Data Preparation
+Based on course materials, the first step was to remove variables in order to reduce the amount of data needed, and improve the ability to create a model.  These data preparation steps included creating removing variables that had low variance, had missing values, and finally removing variables that were not useful in a model (e.g., name of subject).
+
+```{r preprocess}
+# Read in Downloaded Data and set missing values
+
+training <- read.csv("pml-training.csv", header = TRUE, na.strings=c("NA","#DIV/0!"))
+testing  <- read.csv("pml-testing.csv", header = TRUE, na.strings=c("NA","#DIV/0!"))
+
+# Clean/pre-process and keep variables useful for modeling.
+
+# find columns wth missing values
+drop.columns1 <- names(which(colSums(is.na(training))>0))
+training <- training[,!(names(training) %in% drop.columns1)]
+testing  <- testing[,!(names(testing) %in% drop.columns1)]
+#remove(drop.columns1)
+
+# find columns with low variance
+drop.columns2 <- nearZeroVar(training, freqCut = 95/5, uniqueCut = 10, saveMetrics = FALSE, foreach = FALSE, allowParallel = TRUE)
+drop.columns.names2 <- names(training[drop.columns2])
+training <- training[,!(names(training) %in% drop.columns.names2)]
+testing  <- testing[,!(names(testing) %in% drop.columns.names2)]
+#remove(drop.columns2)
+
+# drop unnecessary columns
+drop.columns.names3 <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window")
+training <- training[,!(names(training) %in% drop.columns.names3)]
+testing <- testing[,!(names(testing) %in% drop.columns.names3)]
+#remove(drop.columns.names3)
+```
+### Create Validation Dataset
+We take the training dataset and further split intoa validation dataset to see how well the model works
+
+```{r split}
+# Split the training to create cross-validation file
+inCrossVal <- createDataPartition(training$classe, p=0.6, list=FALSE)
+training.data <- training[-inCrossVal,]
+crossval.data <- training[inCrossVal,]
+#remove(inCrossVal)
+```
+
+### Create Various Models
+The author admits he was dumbfounded doing this project, and thus did several models in an attempt to see if
+
+* 1 They ran, and 
+* 2 They produced output  
+
+in the end, he picked the one (Random Forest) that seemed to produce usable output, and commented out the rest.
+
+```{r models}
+modelFit <- train(classe ~ ., data=training.data, preProcess=c("pca"), trControl=trainControl(method="cv"), method="rf")
+
+modelFit
+modelFit$finalModel
+
+#tsub.lda <- train(classe~., data=trainingsub, method="lda")
+#tsub.lda
+
+#tsub.rf <- randomForest(classe ~. , data=trainingsub, method="class")
+#tsub.rf
+
+#tsub.rf2 <- train(classe ~. , preProcess=c("BoxCox"), data=trainingsub, method="rf")
+#tsub.rf2
+
+#tsub.rf3 <- train(classe ~. , preProcess=c("pca"), trControl=trainControl(method="cv"), data=trainingsub, method="rf")
+#tsub.rf3
+
+#csub.lda <- train(classe~., data=crossvalsub, method="lda")
+#csub.lda
+#csub.rf <- randomForest(classe ~. , data=crossvalsub, method="class")
+#csub.rf
+
+#predict.rpart <- train(classe~. , data = training, method="rpart")
+#ctrl.rf <- trainControl(allowParallel=T, method="cv", number=4)
+#predict.rf <- train(classe ~ ., data=training, model="rf", trControl=ctrl.rf)
+```
+
+### Check Using Cross Validation
+The model was then applied to the cross validation dataset.
+
+```{r crossvalidation}
+classe.index <-which(colnames(crossval.data)=="classe")
+predict.cv <- predict(modelFit, crossval.data[,-classe.index])
+```
+### Out of Sample Error Rate
+The out of sample error rate is calculated by taking the model from the training data, and applying to the testing data.  I expect the accuracy to be better than or roughly equal to the training data.  This demonstrates that the model is not overfitting.  The traing error was 0.94 and the testing was 0.94.
+
+```{r ooser}
+confusionMatrix(predict.cv, crossval.data$classe)
+```
+
+### Explain Choices Made
+I selected Random Forest because I was able to get it to work..
+
+
+##Acknowledgements
+Estimating accuracy from //http://machinelearningmastery.com/how-to-estimate-model-accuracy-in-r-using-the-caret-package/. 
+
+Data are graciously provided by Groupware@les
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more at: http://groupware.les.inf.puc-rio.br/har#ixzz3jDWEZJOH
+
+##Libraries and Environment
+```{r sessioninfo, echo = FALSE, results='hide'}
+# Document the libraries and environment for display in-line
+libraries.loaded <- .packages()
+require(utils)
+sinfo <- sessionInfo()
+pinfo <- .Platform
+```
+The following libraries are needed for reproducing the output: *`r libraries.loaded`*
+
+This run was created with `r sinfo$R.version$version.string` on a `r pinfo$OS.type` `r pinfo$r_arch` bit machine.
